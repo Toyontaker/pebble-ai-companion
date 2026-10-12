@@ -1,0 +1,43 @@
+{
+  "name": "pebble-ai-companion",
+  "author": "toyon",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "AI Companion",
+    "uuid": "8b0d485b-6bb5-47b4-b64e-74ab8e8d5c0f",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": [
+      "configurable",
+      "location"
+    ],
+    "messageKeys": [
+      "REQ_CMD",
+      "REQ_TEXT",
+      "REQ_ARG",
+      "RES_STATUS",
+      "RES_TEXT",
+      "RES_MORE",
+      "ACT_KIND",
+      "ACT_TIME",
+      "ACT_TEXT",
+      "READY",
+      "CFG_LANG",
+      "CONFIRM_TEXT",
+      "CFG_SOUND"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

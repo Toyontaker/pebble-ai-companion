@@ -1,0 +1,7 @@
+build/
+.lock-waf*
+node_modules/
+*.pbw
+
+# livetest.js reads the key from the environment; never commit one
+.env
