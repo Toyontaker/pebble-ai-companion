@@ -72,6 +72,7 @@ typedef enum {
   STR_COUNT
 } StrId;
 
+void i18n_init_from_system(void);
 void i18n_set_lang(Lang lang);
 Lang i18n_get_lang(void);
 const char *S(StrId id);

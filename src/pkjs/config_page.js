@@ -5,6 +5,13 @@
 var settings = require('./settings');
 var catalog = require('./providers/catalog');
 
+var REPO = 'https://github.com/Toyontaker/pebble-ai-companion';
+var LINKS = {
+  codeGs: REPO + '/blob/main/gas/Code.gs',
+  calendarGuide: REPO + '/blob/main/docs/CALENDAR.md',
+  privacy: REPO + '/blob/main/PRIVACY.md'
+};
+
 function esc(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -37,19 +44,27 @@ function strings(ja) {
     lang: '言語',
     web: 'インターネット検索を許可',
     webHint: '各プロバイダの組み込み検索（Claude: web_search / OpenAI: web search / Gemini: google_search）を使います。',
-    loc: '現在地を送る（天気・周辺情報用）',
+    loc: '現在地を AI に送る（天気・周辺情報用）',
+    locHint: 'オンにすると、質問のたびにおおよその現在地（緯度・経度）を、選んだプロバイダに送ります。',
     sound: '音を鳴らす',
     soundHint: 'アラーム・タイマー・リマインダーのメロディと、回答が届いたときのチャイム。スピーカーのある Pebble Time 2 のみ。オフでも振動はします。',
     persona: '追加の指示（口調・呼び方など）',
     cal: 'Google カレンダー連携',
+    calMode: '連携方法',
+    calOff: 'オフ',
+    calIcal: 'ライト（予定を読むだけ）',
+    calGas: '上級者向け（追加・変更・削除も）',
+    calIcalUrl: 'iCal 形式の非公開アドレス',
+    calIcalHint: 'パソコンで Google カレンダーを開き、設定 → 対象のカレンダー →「カレンダーの統合」にある「iCal 形式の非公開アドレス」を貼ってください。予定の変更が反映されるまで時間がかかることがあります。',
     calUrl: 'ウェブアプリの URL',
     calSecret: '合言葉（SECRET）',
-    calHint: 'Apps Script（gas/Code.gs）を自分のアカウントにデプロイして、/exec で終わる URL と、スクリプトに設定した SECRET を入れてください。手順は README にあります。両方空欄ならカレンダー機能はオフです。',
-    timeline: 'タイムラインAPI',
-    timelineHint: 'Rebbleをお使いの場合は https://timeline-api.rebble.io/v1/user/pins/ に変更してください。',
+    calGasHint: 'Apps Script を自分の Google アカウントにデプロイして、/exec で終わる URL と、スクリプトに設定した SECRET を入れてください。',
+    calCode: 'Code.gs を開く（GitHub）',
+    calGuide: '設定手順を見る',
     base: 'APIエンドポイント',
     baseHint: '空欄ならプロバイダの既定エンドポイントを使います。互換ゲートウェイを経由する場合のみ入力してください。',
     forget: '記憶した内容を消去する',
+    privacy: 'プライバシーポリシー',
     save: '保存',
     advanced: '詳細設定'
   } : {
@@ -64,19 +79,27 @@ function strings(ja) {
     lang: 'Language',
     web: 'Allow web search',
     webHint: 'Uses each provider\'s built-in search (Claude: web_search, OpenAI: web search, Gemini: google_search).',
-    loc: 'Share my location (weather, nearby places)',
+    loc: 'Send my location to the AI (weather, nearby places)',
+    locHint: 'When on, your approximate location (latitude and longitude) goes to the selected provider with each question.',
     sound: 'Play sounds',
     soundHint: 'Melody for alarms, timers and reminders, and a chime when an answer arrives. Pebble Time 2 only (it has the speaker). Vibration stays on either way.',
     persona: 'Extra instructions (tone, how to address you)',
     cal: 'Google Calendar',
+    calMode: 'Connection',
+    calOff: 'Off',
+    calIcal: 'Light (read events only)',
+    calGas: 'Advanced (add, change and delete too)',
+    calIcalUrl: 'Secret address in iCal format',
+    calIcalHint: 'On a computer, open Google Calendar settings, pick the calendar, and under "Integrate calendar" copy the "Secret address in iCal format". Changes can take a while to show up in it.',
     calUrl: 'Web app URL',
     calSecret: 'Secret',
-    calHint: 'Deploy the Apps Script in gas/Code.gs to your own account, then paste the URL ending in /exec and the SECRET you set on the script. Steps are in the README. Leave both empty to turn calendar features off.',
-    timeline: 'Timeline API',
-    timelineHint: 'On Rebble, change this to https://timeline-api.rebble.io/v1/user/pins/',
+    calGasHint: 'Deploy the Apps Script to your own Google account, then paste the URL ending in /exec and the SECRET you set on the script.',
+    calCode: 'Open Code.gs (GitHub)',
+    calGuide: 'Setup guide',
     base: 'API endpoint',
     baseHint: 'Leave empty to use the provider default. Fill it in only to route through a compatible gateway.',
     forget: 'Erase remembered facts',
+    privacy: 'Privacy policy',
     save: 'Save',
     advanced: 'Advanced'
   };
@@ -111,6 +134,8 @@ function html(current) {
     'button{width:100%;margin-top:24px;padding:14px;border:0;border-radius:8px;' +
     'background:#c96442;color:#fff;font-size:16px;font-weight:600}' +
     '[hidden]{display:none}' +
+    'a{color:#c96442}.links{font-size:13px;margin-top:8px}.links a{margin-right:14px}' +
+    '.foot{text-align:center;font-size:13px;margin-top:18px}' +
     '</style></head><body>' +
     '<h1>' + esc(t.title) + '</h1>' +
 
@@ -146,6 +171,7 @@ function html(current) {
     '<div class="row"><input type="checkbox" id="location"' +
     (current.location === 'true' ? ' checked' : '') + '>' +
     '<label for="location">' + esc(t.loc) + '</label></div>' +
+    '<div class="hint">' + esc(t.locHint) + '</div>' +
 
     '<div class="row"><input type="checkbox" id="sound"' +
     (current.sound === 'true' ? ' checked' : '') + '>' +
@@ -155,27 +181,41 @@ function html(current) {
     '<label for="persona">' + esc(t.persona) + '</label>' +
     '<textarea id="persona">' + esc(current.persona) + '</textarea>' +
 
-    '<details' + (current.cal_url ? ' open' : '') + '><summary>' + esc(t.cal) + '</summary>' +
+    '<details' + (current.cal_mode !== 'off' ? ' open' : '') + '><summary>' + esc(t.cal) + '</summary>' +
+    '<label for="cal_mode">' + esc(t.calMode) + '</label><select id="cal_mode">' +
+    option('off', t.calOff, current.cal_mode) +
+    option('ical', t.calIcal, current.cal_mode) +
+    option('gas', t.calGas, current.cal_mode) +
+    '</select>' +
+    '<div id="cal_ical">' +
+    '<label for="cal_ical_url">' + esc(t.calIcalUrl) + '</label>' +
+    '<input type="password" id="cal_ical_url" value="' + esc(current.cal_ical_url) + '"' +
+    ' placeholder="https://calendar.google.com/calendar/ical/.../private-.../basic.ics"' +
+    ' autocapitalize="off" autocorrect="off" spellcheck="false">' +
+    '<div class="hint">' + esc(t.calIcalHint) + '</div>' +
+    '</div>' +
+    '<div id="cal_gas">' +
     '<label for="cal_url">' + esc(t.calUrl) + '</label>' +
     '<input type="text" id="cal_url" value="' + esc(current.cal_url) + '" placeholder="https://script.google.com/macros/s/.../exec"' +
     ' autocapitalize="off" autocorrect="off" spellcheck="false">' +
     '<label for="cal_secret">' + esc(t.calSecret) + '</label>' +
     '<input type="password" id="cal_secret" value="' + esc(current.cal_secret) + '">' +
-    '<div class="hint">' + esc(t.calHint) + '</div>' +
+    '<div class="hint">' + esc(t.calGasHint) + '</div>' +
+    '<div class="links"><a href="' + esc(LINKS.codeGs) + '" target="_blank" rel="noopener">' + esc(t.calCode) + '</a></div>' +
+    '</div>' +
+    '<div class="links"><a href="' + esc(LINKS.calendarGuide) + '" target="_blank" rel="noopener">' + esc(t.calGuide) + '</a></div>' +
     '</details>' +
 
     '<details><summary>' + esc(t.advanced) + '</summary>' +
     '<label for="base_url">' + esc(t.base) + '</label>' +
     '<input type="text" id="base_url" autocapitalize="off" autocorrect="off" spellcheck="false">' +
     '<div class="hint">' + esc(t.baseHint) + '</div>' +
-    '<label for="timeline_base">' + esc(t.timeline) + '</label>' +
-    '<input type="text" id="timeline_base" value="' + esc(current.timeline_base) + '">' +
-    '<div class="hint">' + esc(t.timelineHint) + '</div>' +
     '<div class="row"><input type="checkbox" id="forget"><label for="forget">' +
     esc(t.forget) + '</label></div>' +
     '</details>' +
 
     '<button id="save">' + esc(t.save) + '</button>' +
+    '<div class="foot"><a href="' + esc(LINKS.privacy) + '" target="_blank" rel="noopener">' + esc(t.privacy) + '</a></div>' +
 
     '<script>' +
     'var PROVIDERS=' + json(catalog.ALL) + ';' +
@@ -201,6 +241,11 @@ function html(current) {
     '}' +
     'var shown=el("provider").value;' +
     'load(shown);' +
+    // Show only the fields for the chosen calendar connection.
+    'function calShow(){var m=el("cal_mode").value;el("cal_ical").hidden=m!=="ical";el("cal_gas").hidden=m!=="gas";}' +
+    'el("cal_mode").addEventListener("change",calShow);' +
+    'el("cal_mode").addEventListener("input",calShow);' +
+    'calShow();' +
     // Some mobile webviews defer a <select> change event until blur, so the
     // swap is driven from several events and, at save time, from the DOM
     // rather than from the cached id.
@@ -218,7 +263,8 @@ function html(current) {
     'web_search:el("web_search").checked?"true":"false",' +
     'location:el("location").checked?"true":"false",' +
     'sound:el("sound").checked?"true":"false",' +
-    'persona:el("persona").value,timeline_base:el("timeline_base").value,' +
+    'persona:el("persona").value,' +
+    'cal_mode:el("cal_mode").value,cal_ical_url:el("cal_ical_url").value,' +
     'cal_url:el("cal_url").value,cal_secret:el("cal_secret").value,' +
     'forget:el("forget").checked?"true":"false"};' +
     'for(var i=0;i<PROVIDERS.length;i++){for(var j=0;j<SCOPED.length;j++){' +

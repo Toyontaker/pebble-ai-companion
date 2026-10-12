@@ -6,22 +6,35 @@
 
 var catalog = require('./providers/catalog');
 
+// Japanese only renders on watches with a Japanese language pack, so it is
+// the default only for phones set to Japanese; everyone else starts in English.
+function phoneLanguage() {
+  try {
+    var tag = (typeof navigator !== 'undefined' && navigator &&
+               (navigator.language || (navigator.languages && navigator.languages[0]))) || '';
+    return String(tag).toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en';
+  } catch (e) {
+    return 'en';
+  }
+}
+
 var DEFAULTS = {
   provider: 'anthropic',
   effort: 'low',
-  lang: 'ja',
+  lang: phoneLanguage(),
   web_search: 'true',
-  location: 'true',
+  // Location goes to a third party, so it stays off until the user opts in.
+  location: 'false',
   // Speaker cues on watches that have one (Time 2). Stored on the watch too,
   // since alarms fire while the phone is away.
   sound: 'true',
   persona: '',
-  // Google Calendar bridge (gas/Code.gs). Both empty means no calendar tools.
+  // Google Calendar: 'off', 'ical' (read-only secret iCal address) or 'gas'
+  // (read/write through the Apps Script bridge in gas/Code.gs).
+  cal_mode: '',
+  cal_ical_url: '',
   cal_url: '',
-  cal_secret: '',
-  // Only used when the Pebble app has no local pins (see timeline.js).
-  // Rebble users generally need https://timeline-api.rebble.io/v1/user/pins/
-  timeline_base: 'https://timeline-api.getpebble.com/v1/user/pins/'
+  cal_secret: ''
 };
 
 var KEYS = Object.keys(DEFAULTS);
@@ -78,6 +91,22 @@ function isConfigured() {
   return apiKey().length > 0;
 }
 
+// The calendar mode actually in effect: a mode whose fields are empty counts
+// as off. Installs from before the mode switch only had the bridge fields, so
+// an unset mode with those filled in means the bridge.
+function calendarMode() {
+  var chosen = raw('cal_mode');
+  var hasIcal = raw('cal_ical_url').length > 0;
+  var hasGas = raw('cal_url').length > 0 && raw('cal_secret').length > 0;
+  if (chosen === 'ical') {
+    return hasIcal ? 'ical' : 'off';
+  }
+  if (chosen === 'gas' || (chosen === '' && hasGas)) {
+    return hasGas ? 'gas' : 'off';
+  }
+  return 'off';
+}
+
 // --- persistence -----------------------------------------------------------
 
 // Everything the config page needs to render, including the values of the
@@ -91,6 +120,7 @@ function all() {
     out[KEYS[i]] = get(KEYS[i]);
   }
   out.provider = providerId();
+  out.cal_mode = raw('cal_mode') || (calendarMode() === 'gas' ? 'gas' : 'off');
 
   for (var j = 0; j < catalog.ALL.length; j++) {
     var id = catalog.ALL[j].id;
@@ -213,6 +243,7 @@ module.exports = {
   all: all,
   save: save,
   isConfigured: isConfigured,
+  calendarMode: calendarMode,
   repair: repair,
   memory: memory,
   remember: remember,

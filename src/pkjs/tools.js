@@ -99,20 +99,22 @@ var DEFINITIONS = [
   }
 ];
 
-// Only offered when the calendar bridge is configured (see definitions()).
-var CALENDAR_DEFINITIONS = [
-  {
-    name: 'calendar_list_events',
-    description: 'List events on the user\'s Google Calendar. Use for questions about appointments, meetings and plans ("what is on today", "when is the dentist"). Each event comes back with a short id such as e3 that the update and delete tools take.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        from: { type: 'string', description: 'Start of the range, local YYYY-MM-DD or YYYY-MM-DDTHH:MM. Defaults to the start of today.' },
-        to: { type: 'string', description: 'End of the range, same formats. A bare date includes that whole day. Defaults to the end of the from day.' },
-        query: { type: 'string', description: 'Optional text the event title must contain.' }
-      }
+// Offered only when a calendar is connected (see definitions()). The light
+// iCal mode is read-only and gets the list tool alone.
+var CALENDAR_LIST_DEFINITION = {
+  name: 'calendar_list_events',
+  description: 'List events on the user\'s Google Calendar. Use for questions about appointments, meetings and plans ("what is on today", "when is the dentist"). Each event comes back with a short id such as e3 that the update and delete tools take.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      from: { type: 'string', description: 'Start of the range, local YYYY-MM-DD or YYYY-MM-DDTHH:MM. Defaults to the start of today.' },
+      to: { type: 'string', description: 'End of the range, same formats. A bare date includes that whole day. Defaults to the end of the from day.' },
+      query: { type: 'string', description: 'Optional text the event title must contain.' }
     }
-  },
+  }
+};
+
+var CALENDAR_WRITE_DEFINITIONS = [
   {
     name: 'calendar_create_event',
     description: 'Add an event to the user\'s Google Calendar (their default calendar). Use this for appointments and plans; use set_reminder only when they want the watch to buzz.',
@@ -158,7 +160,13 @@ var CALENDAR_DEFINITIONS = [
 
 // The tools to offer for this request.
 function definitions() {
-  return calendar.isConfigured() ? DEFINITIONS.concat(CALENDAR_DEFINITIONS) : DEFINITIONS.slice();
+  if (calendar.canWrite()) {
+    return DEFINITIONS.concat([CALENDAR_LIST_DEFINITION], CALENDAR_WRITE_DEFINITIONS);
+  }
+  if (calendar.isConfigured()) {
+    return DEFINITIONS.concat([CALENDAR_LIST_DEFINITION]);
+  }
+  return DEFINITIONS.slice();
 }
 
 var KIND_NAMES = { 1: 'timer', 2: 'alarm', 3: 'reminder' };
@@ -364,9 +372,7 @@ function executeCalendar(name, input, ctx, callback) {
     if (!to || to.allDay) {
       toAt = new Date(toAt.getFullYear(), toAt.getMonth(), toAt.getDate() + 1);
     }
-    calendar.request('list', {
-      from: from.at.getTime(), to: toAt.getTime(), query: input.query
-    }, function (err, result) {
+    calendar.listEvents(from.at.getTime(), toAt.getTime(), input.query, function (err, result) {
       if (err) {
         callback('Error: ' + err);
         return;
@@ -385,6 +391,13 @@ function executeCalendar(name, input, ctx, callback) {
       }
       callback(lines.join('\n'));
     });
+    return;
+  }
+
+  // The light (iCal) mode cannot write. The model is not offered these tools
+  // then, but a conversation from before a settings change might still try.
+  if (!calendar.canWrite()) {
+    callback('Error: the calendar is connected read-only (iCal address). Adding, changing or deleting events needs the advanced Apps Script connection in the AI Companion settings. Offer a watch reminder (set_reminder) instead if that helps.');
     return;
   }
 

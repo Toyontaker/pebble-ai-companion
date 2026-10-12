@@ -60,7 +60,8 @@ function parseArguments(raw) {
   try {
     return JSON.parse(raw);
   } catch (e) {
-    console.log('could not parse tool arguments: ' + raw);
+    // Length only: the arguments can carry what the user said.
+    console.log('could not parse tool arguments (' + String(raw).length + ' chars)');
     return {};
   }
 }

@@ -38,7 +38,11 @@ function build(ctx) {
 
   if (calendar.isConfigured()) {
     lines.push('- The user\'s Google Calendar is connected. Appointments, meetings and plans ("予定", "what is on today") live there: check it with calendar_list_events. The watch schedule below only holds timers, alarms and reminders.');
-    lines.push('- To change or delete an event, list it first and use its id. The watch asks the user to confirm; if they decline, say so in a few words and do not retry.');
+    if (calendar.canWrite()) {
+      lines.push('- To change or delete an event, list it first and use its id. The watch asks the user to confirm; if they decline, say so in a few words and do not retry.');
+    } else {
+      lines.push('- The calendar is read-only here. If the user asks to add, move or delete an event, say in one sentence that this needs the advanced calendar connection in the app settings, and offer a watch reminder instead.');
+    }
   }
 
   if (ctx.searchAvailable) {

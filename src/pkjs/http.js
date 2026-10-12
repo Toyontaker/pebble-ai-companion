@@ -12,6 +12,14 @@ function headerSafe(value) {
   return String(value).replace(/[\r\n]+/g, '').replace(/^\s+/, '').replace(/\s+$/, '');
 }
 
+// URLs that are credentials in themselves (the Apps Script deployment, the
+// secret iCal address) are masked before they reach the log.
+function loggable(url) {
+  return String(url)
+    .replace(/\/macros\/s\/[^/]+\//, '/macros/s/***/')
+    .replace(/\/private-[^/]+\//, '/private-***/');
+}
+
 // headers: { name: value }. Calls onSuccess(parsedJson) or onError(message).
 function postJson(url, headers, body, onSuccess, onError) {
   var xhr = new XMLHttpRequest();
@@ -37,7 +45,7 @@ function postJson(url, headers, body, onSuccess, onError) {
       console.log('could not set header ' + name + ': ' + e);
     }
   }
-  console.log('POST ' + url + ' [' + names.join(', ') + ']');
+  console.log('POST ' + loggable(url) + ' [' + names.join(', ') + ']');
 
   xhr.timeout = REQUEST_TIMEOUT_MS;
 
@@ -57,6 +65,26 @@ function postJson(url, headers, body, onSuccess, onError) {
   xhr.ontimeout = function () { activeXhr = null; onError('The request timed out.'); };
 
   xhr.send(JSON.stringify(body));
+}
+
+// Plain GET for text bodies (the iCal feed). Calls onSuccess(text) or onError(message).
+function getText(url, onSuccess, onError) {
+  var xhr = new XMLHttpRequest();
+  activeXhr = xhr;
+  xhr.open('GET', url, true);
+  xhr.timeout = REQUEST_TIMEOUT_MS;
+  console.log('GET ' + loggable(url));
+  xhr.onload = function () {
+    activeXhr = null;
+    if (xhr.status < 200 || xhr.status >= 300) {
+      onError('HTTP ' + xhr.status);
+      return;
+    }
+    onSuccess(xhr.responseText || '');
+  };
+  xhr.onerror = function () { activeXhr = null; onError('Network error.'); };
+  xhr.ontimeout = function () { activeXhr = null; onError('The request timed out.'); };
+  xhr.send();
 }
 
 // Providers disagree about where the message lives; try the common shapes
@@ -86,5 +114,6 @@ function abort() {
 
 module.exports = {
   postJson: postJson,
+  getText: getText,
   abort: abort
 };

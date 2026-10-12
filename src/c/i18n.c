@@ -124,6 +124,13 @@ static const char *const s_en[STR_COUNT] = {
   [STR_CONFIRM_NO]      = "Down: cancel",
 };
 
+// Until the phone says otherwise: Japanese only when the watch itself runs a
+// Japanese language pack, since system fonts cannot draw it otherwise.
+void i18n_init_from_system(void) {
+  const char *locale = i18n_get_system_locale();
+  s_lang = (locale && strncmp(locale, "ja", 2) == 0) ? LANG_JA : LANG_EN;
+}
+
 void i18n_set_lang(Lang lang) {
   s_lang = (lang == LANG_EN) ? LANG_EN : LANG_JA;
 }

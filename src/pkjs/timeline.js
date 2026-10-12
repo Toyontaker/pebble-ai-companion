@@ -1,28 +1,7 @@
-// Pebble timeline pins. The new Pebble app creates them on the phone as
-// local pins (Pebble.insertTimelinePin) and syncs them to the watch. Older
-// apps (original Pebble / Rebble) lack that call, so there we fall back to a
-// plain PUT to the timeline web API with the user token.
-
-var settings = require('./settings');
-
-var cachedToken = null;
-
-function withToken(callback) {
-  if (cachedToken) {
-    callback(cachedToken);
-    return;
-  }
-  Pebble.getTimelineToken(
-    function (token) {
-      cachedToken = token;
-      callback(token);
-    },
-    function (error) {
-      console.log('getTimelineToken failed: ' + error);
-      callback(null);
-    }
-  );
-}
+// Pebble timeline pins, created on the phone as local pins
+// (Pebble.insertTimelinePin) and synced to the watch by the Pebble app. The
+// appstore does not support the timeline web API, so there is no fallback:
+// a phone app without local pins just reports that pinning is unavailable.
 
 function iso(date) {
   return date.toISOString().split('.')[0] + 'Z';
@@ -62,44 +41,19 @@ function hasLocalPins() {
 }
 
 function putPin(pin, callback) {
-  if (hasLocalPins()) {
-    try {
-      Pebble.insertTimelinePin(pin);
-      console.log('pin ' + pin.id + ' inserted as a local pin');
-      callback(true, null);
-    } catch (e) {
-      console.log('insertTimelinePin failed: ' + e);
-      callback(false, String(e));
-    }
+  if (!hasLocalPins()) {
+    console.log('this Pebble app has no local pins; update the Pebble phone app');
+    callback(false, 'timeline pins need the current Pebble phone app');
     return;
   }
-  putPinWeb(pin, callback);
-}
-
-function putPinWeb(pin, callback) {
-  console.log('no local pins in this Pebble app, using the timeline web API');
-  withToken(function (token) {
-    if (!token) {
-      callback(false, 'no timeline token');
-      return;
-    }
-    var url = settings.get('timeline_base') + pin.id;
-    var xhr = new XMLHttpRequest();
-    xhr.open('PUT', url, true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('X-User-Token', token);
-    xhr.timeout = 15000;
-    xhr.onload = function () {
-      var ok = xhr.status >= 200 && xhr.status < 300;
-      if (!ok) {
-        console.log('pin failed ' + xhr.status + ': ' + xhr.responseText);
-      }
-      callback(ok, ok ? null : ('HTTP ' + xhr.status));
-    };
-    xhr.onerror = function () { callback(false, 'network error'); };
-    xhr.ontimeout = function () { callback(false, 'timeout'); };
-    xhr.send(JSON.stringify(pin));
-  });
+  try {
+    Pebble.insertTimelinePin(pin);
+    console.log('pin ' + pin.id + ' inserted as a local pin');
+    callback(true, null);
+  } catch (e) {
+    console.log('insertTimelinePin failed: ' + e);
+    callback(false, String(e));
+  }
 }
 
 function newId(prefix) {

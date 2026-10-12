@@ -27,13 +27,14 @@ global.XMLHttpRequest = function () {
   this.setRequestHeader = function (k, v) { self.headers[k] = v; };
   this.abort = function () {};
   this.send = function (body) {
-    requests.push({ url: self.url, headers: self.headers, body: JSON.parse(body) });
+    requests.push({ method: self.method, url: self.url, headers: self.headers,
+                    body: body === undefined ? null : JSON.parse(body) });
     var next = responses.shift();
     if (!next) {
       throw new Error('no scripted response left for ' + self.url);
     }
     self.status = next.status || 200;
-    self.responseText = JSON.stringify(next.body);
+    self.responseText = typeof next.body === 'string' ? next.body : JSON.stringify(next.body);
     setImmediate(function () { self.onload(); });
   };
 };
@@ -637,6 +638,143 @@ function testSoundSetting(next) {
   next();
 }
 
+// ------------------------------------------------------------ calendar: iCal
+
+var ICS_URL = 'https://calendar.google.com/calendar/ical/me%40x/private-abc/basic.ics';
+var ICS = [
+  'BEGIN:VCALENDAR', 'X-WR-CALNAME:Personal',
+  'BEGIN:VEVENT', 'UID:a', 'SUMMARY:Dentist', 'DTSTART:20261013T060000Z', 'DTEND:20261013T070000Z', 'END:VEVENT',
+  'BEGIN:VEVENT', 'UID:b', 'SUMMARY:Gym', 'DTSTART:20261014T060000Z', 'DTEND:20261014T070000Z', 'END:VEVENT',
+  'END:VCALENDAR'
+].join('\r\n');
+
+function testCalendarIcal(next) {
+  console.log('google calendar (iCal, light)');
+  reset('anthropic');
+  store.cal_mode = 'ical';
+  store.cal_ical_url = ICS_URL.replace('https://', 'webcal://');
+  // Bridge fields left over from the advanced mode must not win over the choice.
+  store.cal_url = BRIDGE;
+  store.cal_secret = 's3cret';
+
+  var day = new Date(2026, 9, 13);
+  var from = calendarDay(day);
+  responses.push({ body: { stop_reason: 'tool_use', content: [
+    { type: 'tool_use', id: 'l1', name: 'calendar_list_events', input: { from: from } }
+  ]}});
+  responses.push({ body: ICS });
+  responses.push({ body: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Dentist.' }] } });
+  ask('what is on today');
+
+  settle(function () {
+    var names = requests[0].body.tools.map(function (t) { return t.name; });
+    assert.ok(names.indexOf('calendar_list_events') > -1, 'list offered');
+    assert.ok(names.indexOf('calendar_create_event') === -1 && names.indexOf('calendar_delete_event') === -1,
+              'no write tools in the light mode');
+    assert.ok(requests[0].body.system.indexOf('read-only') > -1, 'prompt says read-only');
+    done('light mode offers reading only');
+
+    var get = requests[1];
+    assert.strictEqual(get.method, 'GET');
+    assert.strictEqual(get.url, ICS_URL, 'webcal:// rewritten to https://');
+    assert.ok(bridgeRequests().length === 0, 'bridge not used');
+    var result = lastToolResult(requests[2]);
+    var first = result.split('\n')[0];
+    var at = new Date(Date.UTC(2026, 9, 13, 6, 0));
+    var hhmm = (at.getHours() < 10 ? '0' : '') + at.getHours() + ':00';
+    assert.ok(/^e\d+: /.test(first), 'short id: ' + first);
+    assert.ok(first.indexOf(calendarDay(at) + ' ' + hhmm) > -1, 'phone-local time: ' + first);
+    assert.ok(/ Dentist \[Personal\]$/.test(first), 'title and calendar name: ' + first);
+    assert.ok(result.indexOf('Gym') === -1, 'outside the day');
+    done('feed fetched over GET and listed with short ids');
+
+    // Within the cache window the feed is not fetched again.
+    requests = [];
+    responses.push({ body: { stop_reason: 'tool_use', content: [
+      { type: 'tool_use', id: 'l2', name: 'calendar_list_events', input: { from: from, query: 'gym' } }
+    ]}});
+    responses.push({ body: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Gym.' }] } });
+    ask('when is the gym');
+    settle(function () {
+      assert.ok(!requests.some(function (r) { return r.method === 'GET'; }), 'cached feed reused');
+      done('feed cached between questions');
+
+      // A write attempt is refused without touching the network.
+      requests = [];
+      responses.push({ body: { stop_reason: 'tool_use', content: [
+        { type: 'tool_use', id: 'c1', name: 'calendar_create_event', input: { title: 'X', start: '2026-10-15T10:00' } }
+      ]}});
+      responses.push({ body: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Read-only.' }] } });
+      ask('add X tomorrow');
+      settle(function () {
+        assert.strictEqual(requests.length, 2, 'no bridge or feed request');
+        assert.ok(lastToolResult(requests[1]).indexOf('read-only') > -1);
+        done('writes refused in the light mode');
+
+        // Mode resolution.
+        store = {};
+        assert.strictEqual(settings.calendarMode(), 'off');
+        store.cal_url = BRIDGE; store.cal_secret = 's';
+        assert.strictEqual(settings.calendarMode(), 'gas', 'old installs keep the bridge');
+        store.cal_mode = 'off';
+        assert.strictEqual(settings.calendarMode(), 'off', 'explicit off wins');
+        store.cal_mode = 'ical';
+        assert.strictEqual(settings.calendarMode(), 'off', 'ical without an address is off');
+        done('mode resolution');
+        next();
+      });
+    });
+  });
+}
+
+function calendarDay(d) {
+  return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' +
+         (d.getDate() < 10 ? '0' : '') + d.getDate();
+}
+
+// -------------------------------------------------------- defaults and pins
+
+function testDefaultsAndPins(next) {
+  console.log('privacy defaults and pins');
+  store = {};
+  assert.strictEqual(settings.getBool('location'), false, 'location is opt-in');
+  assert.strictEqual(settings.get('lang'), 'en', 'non-Japanese phone starts in English');
+  done('location off and language from the phone');
+
+  var page = require('./src/pkjs/config_page').html(settings.all());
+  assert.ok(page.indexOf('github.com/Toyontaker/pebble-ai-companion/blob/main/gas/Code.gs') > -1, 'Code.gs link');
+  assert.ok(page.indexOf('PRIVACY.md') > -1, 'privacy link');
+  assert.ok(page.indexOf('id="cal_mode"') > -1 && page.indexOf('id="cal_ical_url"') > -1);
+  assert.ok(page.indexOf('timeline_base') === -1, 'web API field gone');
+  done('config page has the calendar modes and links');
+
+  // Pinning without local pins fails cleanly; with them it reports success.
+  reset('anthropic');
+  sent = [];
+  emit('appmessage', { payload: { REQ_CMD: 3, REQ_TEXT: 'Q' } });
+  assert.ok(sent.some(function (d) { return d.RES_STATUS === 7; }), 'PIN_FAIL with nothing to pin');
+
+  var inserted = [];
+  global.Pebble.insertTimelinePin = function (pin) { inserted.push(pin); };
+  responses.push({ body: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Sunny.' }] } });
+  ask('weather');
+  settle(function () {
+    sent = [];
+    emit('appmessage', { payload: { REQ_CMD: 3, REQ_TEXT: 'weather' } });
+    assert.strictEqual(inserted.length, 1);
+    assert.strictEqual(inserted[0].layout.title, 'weather');
+    assert.strictEqual(inserted[0].layout.body, 'Sunny.');
+    assert.ok(sent.some(function (d) { return d.RES_STATUS === 6; }), 'PINNED');
+
+    delete global.Pebble.insertTimelinePin;
+    sent = [];
+    emit('appmessage', { payload: { REQ_CMD: 3, REQ_TEXT: 'weather' } });
+    assert.ok(sent.some(function (d) { return d.RES_STATUS === 7; }), 'PIN_FAIL without local pins');
+    done('answer pinned as a local pin; no web API fallback');
+    next();
+  });
+}
+
 // ----------------------------------------------------------------- runner
 
 // Each case is async, so run them as a chain rather than nesting by hand.
@@ -650,6 +788,8 @@ var CASES = [
   testDefaultsStayLive,
   testEndpointFollowsProvider,
   testCalendar,
+  testCalendarIcal,
+  testDefaultsAndPins,
   testSoundSetting
 ];
 

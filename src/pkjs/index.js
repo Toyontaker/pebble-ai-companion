@@ -58,7 +58,9 @@ function pump() {
     sending = false;
     entry.tries++;
     if (entry.tries >= 3) {
-      console.log('dropping message after 3 attempts: ' + JSON.stringify(e));
+      // Not the whole event: it can echo the message, which may be an answer.
+      console.log('dropping message after 3 attempts: ' +
+                  ((e && e.error && e.error.message) || 'unknown error'));
       outbox.shift();
     }
     setTimeout(pump, 250);

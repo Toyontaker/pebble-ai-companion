@@ -178,6 +178,8 @@ static void prv_outbox_sent(DictionaryIterator *iter, void *context) {
 void comm_init(void) {
   if (persist_exists(PERSIST_KEY_LANG)) {
     i18n_set_lang((Lang)persist_read_int(PERSIST_KEY_LANG));
+  } else {
+    i18n_init_from_system();
   }
   app_message_register_inbox_received(prv_inbox_received);
   app_message_register_inbox_dropped(prv_inbox_dropped);
